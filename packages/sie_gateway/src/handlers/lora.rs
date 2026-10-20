@@ -4,8 +4,14 @@ use serde_json::{Map, Value};
 
 pub(crate) const FIELDS: [&str; 3] = ["lora_adapter", "lora", "lora_id"];
 
+#[derive(Debug)]
+pub(crate) struct SelectorError {
+    pub field: &'static str,
+    pub message: String,
+}
+
 /// Retain the supplied spellings so legacy source-only admission cannot be lost.
-pub(crate) fn selectors(body: &Map<String, Value>) -> Result<Map<String, Value>, String> {
+pub(crate) fn selectors(body: &Map<String, Value>) -> Result<Map<String, Value>, SelectorError> {
     let mut selected = None;
     let mut fields = Map::new();
     for field in FIELDS {
@@ -13,10 +19,16 @@ pub(crate) fn selectors(body: &Map<String, Value>) -> Result<Map<String, Value>,
             continue;
         };
         if !value.is_null() && !value.as_str().is_some_and(|s| !s.trim().is_empty()) {
-            return Err(format!("'{field}' must be a non-empty string or null"));
+            return Err(SelectorError {
+                field,
+                message: format!("'{field}' must be a non-empty string or null"),
+            });
         }
         if selected.is_some_and(|prior| prior != value) {
-            return Err("LoRA selector fields must agree, including explicit null values".into());
+            return Err(SelectorError {
+                field,
+                message: "LoRA selector fields must agree, including explicit null values".into(),
+            });
         }
         selected = Some(value);
         fields.insert(field.into(), value.clone());
@@ -27,7 +39,9 @@ pub(crate) fn selectors(body: &Map<String, Value>) -> Result<Map<String, Value>,
 pub(crate) fn validate_options(options: Option<&Value>) -> Result<(), String> {
     match options {
         None | Some(Value::Null) => Ok(()),
-        Some(Value::Object(options)) => selectors(options).map(|_| ()),
+        Some(Value::Object(options)) => selectors(options)
+            .map(|_| ())
+            .map_err(|error| error.message),
         _ => Err("'options' must be an object or null".into()),
     }
 }
@@ -61,7 +75,9 @@ pub(crate) fn validate_options_rmpv(options: Option<&rmpv::Value>) -> Result<(),
             return Err(format!("duplicate LoRA selector '{key}'"));
         }
     }
-    selectors(&selected).map(|_| ())
+    selectors(&selected)
+        .map(|_| ())
+        .map_err(|error| error.message)
 }
 
 #[cfg(test)]

@@ -309,7 +309,7 @@ fn normalize_request(parsed: &Value) -> Result<(Value, Vec<Value>), Invalid> {
         native.insert(format!("question_{index}"), normalized);
     }
     let selectors =
-        super::lora::selectors(body).map_err(|message| invalid(message, "lora_adapter"))?;
+        super::lora::selectors(body).map_err(|error| invalid(error.message, error.field))?;
     let mut request = json!({"model": model, "state": body["input"], "questions": native});
     request.as_object_mut().unwrap().extend(selectors);
     Ok((request, questions.clone()))
@@ -662,6 +662,103 @@ mod tests {
         conflict["lora_adapter"] = Value::Null;
         conflict["lora"] = json!("legal");
         assert!(normalize_request(&conflict).is_err());
+    }
+
+    async fn assert_lora_error_fields(path: &str, base: Value, status: StatusCode) {
+        let gateway = TestGateway::new(&[LOCAL_DECISION_MODEL]).await;
+        let router = create_router(
+            Arc::clone(&gateway.state),
+            Arc::clone(&gateway.state.config),
+        );
+        let mut cases = Vec::new();
+        for field in ["lora", "lora_id", "lora_adapter"] {
+            for value in [
+                json!(false),
+                json!(1),
+                json!([]),
+                json!({}),
+                json!(""),
+                json!(" \t"),
+            ] {
+                cases.push((
+                    json!({field: value}),
+                    field,
+                    format!("'{field}' must be a non-empty string or null"),
+                ));
+            }
+        }
+        for (first, second) in [
+            ("lora_adapter", "lora"),
+            ("lora_adapter", "lora_id"),
+            ("lora", "lora_id"),
+        ] {
+            for (left, right) in [
+                (Value::Null, json!("private-selection-a")),
+                (json!("private-selection-a"), Value::Null),
+                (json!("private-selection-a"), json!("private-selection-b")),
+            ] {
+                cases.push((
+                    json!({first: left, second: right}),
+                    second,
+                    "LoRA selector fields must agree, including explicit null values".into(),
+                ));
+            }
+        }
+        for (selectors, field, message) in cases {
+            let mut payload = base.clone();
+            payload
+                .as_object_mut()
+                .unwrap()
+                .extend(selectors.as_object().unwrap().clone());
+            let request = Request::builder()
+                .method(Method::POST)
+                .uri(path)
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+                .unwrap();
+            let response = router.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), status, "{path}: {selectors}");
+            let body = body_json(response).await;
+            if path == "/v1/decisions" {
+                assert_eq!(
+                    body["error"],
+                    json!({
+                        "message": message, "param": field,
+                        "type": "invalid_request_error", "code": "invalid_request",
+                    }),
+                    "{selectors}"
+                );
+            } else {
+                assert_eq!(
+                    body["detail"][0]["loc"],
+                    json!(["body", field]),
+                    "{selectors}"
+                );
+                assert_eq!(body["detail"][0]["msg"], message, "{selectors}");
+            }
+            assert!(!body.to_string().contains("private-selection"));
+            assert!(gateway.dispatcher.dispatched().is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn registered_decisions_route_identifies_invalid_lora_fields() {
+        assert_lora_error_fields(
+            "/v1/decisions",
+            predicate_request(),
+            StatusCode::BAD_REQUEST,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn registered_systemone_route_identifies_invalid_lora_fields() {
+        assert_lora_error_fields(
+            "/v1/systemone",
+            json!({"model": "acme/decide", "state": "Continue?", "questions": {"q": {"type": "noul"}}}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        )
+        .await;
     }
 
     #[test]

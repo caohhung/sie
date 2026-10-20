@@ -259,7 +259,7 @@ def _runtime_profile_config() -> ModelConfig:
                     "max_batch_tokens": 8192,
                     "adapter_path": "sie_server.adapters.fake.adapter:FakeAdapter",
                     "adapter_options": {
-                        "loadtime": {"lora_paths": ["request-lora"]},
+                        "loadtime": {"lora_paths": ["request-lora", "profile-lora"]},
                         "runtime": {
                             "threshold": 0.5,
                             "lora": "profile-lora",
@@ -1313,15 +1313,22 @@ class TestProcessScoreBatch:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("key", ["lora_adapter", "lora", "lora_id"])
     @pytest.mark.parametrize("supports_lora", [True, False])
-    @pytest.mark.parametrize("legacy_default", [False, True])
+    @pytest.mark.parametrize("default_style", ["served", "source", "alias_and_source"])
     async def test_real_worker_preserves_authorized_lora_and_isolates_rejections(
-        self, supports_lora: bool, legacy_default: bool, key: str
+        self, supports_lora: bool, default_style: str, key: str
     ) -> None:
         reg = _make_registry()
         config_data = _runtime_profile_config().model_dump()
-        if legacy_default:
-            runtime = config_data["profiles"]["tuned"]["adapter_options"]["runtime"]
+        options = config_data["profiles"]["tuned"]["adapter_options"]
+        runtime = options["runtime"]
+        if default_style == "source":
             runtime["lora_id"] = runtime.pop("lora")
+        elif default_style == "alias_and_source":
+            runtime["lora_id"] = "org/profile-lora"
+            options["loadtime"]["lora_paths"] = {
+                "profile-lora": {"id": "org/profile-lora", "revision": "a" * 40},
+                "request-lora": "request-lora",
+            }
         reg.get_config.return_value = ModelConfig.model_validate(config_data)
         adapter = MagicMock()
         adapter.supports_lora.return_value = supports_lora
@@ -1352,6 +1359,10 @@ class TestProcessScoreBatch:
                         _score_item(wiid="reset.0", options={"profile": "tuned", key: None}),
                         _score_item(wiid="profile-again.0", options={"profile": "tuned"}),
                         _score_item(wiid="undeclared.0", options={"profile": "tuned", "lora": "untrusted"}),
+                        _score_item(
+                            wiid="conflicting.0",
+                            options={"profile": "tuned", "lora": "profile-lora", "lora_id": "org/profile-lora"},
+                        ),
                     ],
                 )
             )
@@ -1371,6 +1382,8 @@ class TestProcessScoreBatch:
             assert by_id[wiid].raw_output.score.scores == [0.0]
         assert by_id["undeclared.0"].error_code == "INVALID_INPUT"
         assert "declares" in by_id["undeclared.0"].error
+        assert by_id["conflicting.0"].error_code == "INVALID_INPUT"
+        assert "agree" in by_id["conflicting.0"].error
         selections = [call.args[0] for call in adapter.set_active_lora.call_args_list]
         assert "untrusted" not in selections
         assert selections == (["profile-lora", "request-lora", None] if supports_lora else [])
@@ -2272,6 +2285,36 @@ async def test_invalid_lora_aliases_are_caller_errors_before_queue_forward(kind:
     assert len(outcome.outcomes) == 1
     assert outcome.outcomes[0].disposition == "publish_error_and_ack"
     assert outcome.outcomes[0].error_code == "INVALID_INPUT"
+    encode.assert_not_called()
+    worker.submit_score_preformed_batch.assert_not_called()
+    worker.submit_extract_preformed_batch.assert_not_called()
+    reg.ensure_lora_loaded_async.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["encode", "score", "extract"])
+@pytest.mark.parametrize("field", [None, "lora_adapter", "lora", "lora_id"])
+async def test_profile_selection_does_not_authorize_sibling_source_before_queue_forward(kind: str, field) -> None:
+    reg = _make_registry()
+    data = _runtime_profile_config().model_dump()
+    data["profiles"]["default"]["adapter_options"]["runtime"]["lora"] = "org/other"
+    data["profiles"]["tuned"]["adapter_options"] = {"loadtime": {"lora_paths": ["org/other"]}}
+    reg.get_config.return_value = ModelConfig.model_validate(data)
+    worker = AsyncMock()
+    reg.start_worker = AsyncMock(return_value=worker)
+    request_type, item = {
+        "encode": (ProcessEncodeBatchRequest, _encode_item),
+        "score": (ProcessScoreBatchRequest, _score_item),
+        "extract": (ProcessExtractBatchRequest, _extract_item),
+    }[kind]
+    options = {} if field is None else {field: "org/other"}
+    with patch("sie_server.queue_executor.EncodePipeline.run_encode", new_callable=AsyncMock) as encode:
+        outcome = await getattr(QueueExecutor(reg), f"process_{kind}_batch")(
+            request_type(model_id="test/model", items=[item(options=options)])
+        )
+    assert len(outcome.outcomes) == 1
+    assert outcome.outcomes[0].error_code == "INVALID_INPUT"
+    assert "declar" in outcome.outcomes[0].error
     encode.assert_not_called()
     worker.submit_score_preformed_batch.assert_not_called()
     worker.submit_extract_preformed_batch.assert_not_called()

@@ -169,7 +169,7 @@ pub(crate) fn normalize_request(parsed: &Value) -> Result<SystemOneRequest, Inva
         normalized.insert(qid.clone(), Value::Object(question));
     }
     let lora_options =
-        super::lora::selectors(body).map_err(|message| invalid(&["lora_adapter"], message))?;
+        super::lora::selectors(body).map_err(|error| invalid(&[error.field], error.message))?;
     Ok(SystemOneRequest {
         model,
         item,

@@ -136,6 +136,108 @@ def test_explicit_null_overrides_legacy_profile_default(field: str) -> None:
     assert merge_runtime_options(_lora_config(), {"profile": "banking"}) == {"lora": "org/banking-lora"}
 
 
+def _served_lora_config(runtime: dict[str, Any], *, pinned: bool = False) -> ModelConfig:
+    data = _lora_config().model_dump()
+    options = data["profiles"]["served"]["adapter_options"]
+    options["runtime"] = {"threshold": 0.5, **runtime}
+    if pinned:
+        options["loadtime"]["lora_paths"]["legal"] = {"id": "org/legal-lora", "revision": "a" * 40}
+    return ModelConfig.model_validate(data)
+
+
+@pytest.mark.parametrize("pinned", [False, True])
+@pytest.mark.parametrize(
+    ("runtime", "expected"),
+    [
+        ({"lora": "legal", "lora_id": "org/legal-lora"}, "legal"),
+        ({"lora_adapter": "legal", "lora_id": "org/legal-lora"}, "legal"),
+        ({"lora_adapter": "legal", "lora": "org/legal-lora", "lora_id": "org/legal-lora"}, "legal"),
+        ({"lora": None, "lora_id": "org/legal-lora"}, None),
+        ({"lora": "legal", "lora_id": None}, "legal"),
+        ({"lora_adapter": None, "lora": None, "lora_id": "org/legal-lora"}, None),
+        ({"lora_id": "org/legal-lora"}, "org/legal-lora"),
+    ],
+)
+def test_profile_lora_defaults_preserve_served_selection(runtime: dict[str, Any], expected, pinned: bool) -> None:
+    config = _served_lora_config(runtime, pinned=pinned)
+    before = config.model_dump()
+
+    merged = merge_runtime_options(config, {"profile": "served"})
+
+    assert merged == {"threshold": 0.5, "lora": expected}
+    assert config.model_dump() == before
+    assert merge_runtime_options(config, None) == {}
+
+
+@pytest.mark.parametrize("field", ["lora_adapter", "lora", "lora_id"])
+@pytest.mark.parametrize("value", [None, "org/legal-lora"])
+def test_request_selector_overrides_profile_alias_and_source(field: str, value: str | None) -> None:
+    config = _served_lora_config({"lora": "legal", "lora_id": "org/legal-lora"}, pinned=True)
+    options = {"profile": "served", field: value, "threshold": 0.75}
+
+    assert merge_runtime_options(config, options) == {"threshold": 0.75, "lora": value}
+    assert options == {"profile": "served", field: value, "threshold": 0.75}
+
+
+@pytest.mark.parametrize(
+    "runtime",
+    [
+        {"lora": "unknown-alias", "lora_id": "org/legal-lora"},
+        {"lora": "unknown-alias"},
+        {"lora": "org/banking-lora"},
+        {"lora": "legal", "lora_id": "org/other"},
+        {"lora_adapter": "undeclared"},
+        {"lora_adapter": None, "lora": "legal"},
+        {"lora_adapter": "legal", "lora": None},
+        {"lora": False},
+        {"lora_id": []},
+    ],
+)
+def test_invalid_profile_lora_defaults_fail_only_when_selected(runtime: dict[str, Any]) -> None:
+    config = _served_lora_config(runtime)
+    with pytest.raises(InvalidLoraOptionError):
+        merge_runtime_options(config, {"profile": "served"})
+    assert merge_runtime_options(config, {"profile": "served", "lora_adapter": None}) == {
+        "threshold": 0.5,
+        "lora": None,
+    }
+    assert merge_runtime_options(config, None) == {}
+
+
+@pytest.mark.parametrize("ref", [None, ""])
+def test_profile_lora_default_cannot_resolve_through_an_empty_declaration(ref) -> None:
+    data = _served_lora_config({"lora": "legal", "lora_id": "org/legal-lora"}).model_dump()
+    data["profiles"]["served"]["adapter_options"]["loadtime"]["lora_paths"]["legal"] = ref
+    config = ModelConfig.model_validate(data)
+    with pytest.raises(InvalidLoraOptionError, match="declared"):
+        merge_runtime_options(config, {"profile": "served"})
+
+
+@pytest.mark.parametrize("field", [None, "lora_adapter", "lora", "lora_id"])
+def test_runtime_selection_cannot_authorize_another_profiles_source(field: str | None) -> None:
+    data = _served_lora_config({"lora": "org/banking-lora"}).model_dump()
+    data["profiles"]["served"]["adapter_options"]["loadtime"] = {}
+    config = ModelConfig.model_validate(data)
+    options = {"profile": "served"}
+    if field is not None:
+        options[field] = "org/banking-lora"
+    with pytest.raises(InvalidInputError, match="declar"):
+        merge_runtime_options(config, options)
+    assert merge_runtime_options(config, {"profile": "served", "lora_adapter": None}) == {
+        "threshold": 0.5,
+        "lora": None,
+    }
+    assert merge_runtime_options(config, {"profile": "banking"}) == {"lora": "org/banking-lora"}
+
+
+def test_request_aliases_still_require_raw_agreement_for_same_declared_source() -> None:
+    config = _served_lora_config({"lora": "legal", "lora_id": "org/legal-lora"}, pinned=True)
+    with pytest.raises(InvalidLoraOptionError, match="agree"):
+        merge_runtime_options(config, {"profile": "served", "lora": "legal", "lora_id": "org/legal-lora"})
+    with pytest.raises(runtime_options.UndeclaredLoraError):
+        merge_runtime_options(config, {"lora_adapter": "legal"})
+
+
 @pytest.mark.parametrize(
     "options",
     [
