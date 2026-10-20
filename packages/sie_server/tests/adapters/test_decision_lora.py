@@ -343,7 +343,10 @@ def test_live_rebinding_refused_and_failed_removal_blocks_future_serving(loaded_
             result(adapter, selected)
 
 
-@pytest.mark.parametrize(("field", "value"), [("kasa_config", {"enabled": True}), ("future_feature", True)])
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("kasa_config", {"enabled": True}), ("future_feature", True), ("future_feature", 0), ("future_feature", 0.0)],
+)
 def test_new_exporter_features_never_silently_disappear(loaded_laya, field, value):
     adapter, paths = loaded_laya
     config_path = Path(paths["a"]) / "adapter_config.json"

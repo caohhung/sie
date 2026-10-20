@@ -219,7 +219,8 @@ class DetachedLoraRuntime(ABC):
             raise ValueError("LoRA configuration must be a JSON object")
         known = {field.name for field in fields(LoraConfig)} | {"peft_version"}
         for name, value in raw.items():
-            if name not in known and value not in (None, False, {}, []):
+            inactive = value is None or value is False or (type(value) in (dict, list) and not value)
+            if name not in known and not inactive:
                 raise ValueError(f"Unsupported LoRA configuration field {name!r}")
         return cls._config(source, PeftConfig.from_pretrained(str(directory), local_files_only=True))
 
