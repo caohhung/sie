@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
+import socket
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, Mock
 
+import huggingface_hub
 import msgspec
 import pytest
 import torch
@@ -203,6 +206,51 @@ def test_ordinary_laya_has_no_lora_controller(laya_checkpoint: Path):
     assert not hasattr(ordinary, "_lora")
     assert not ordinary.supports_lora()
     assert not hasattr(ordinary, "validate_extract_request")
+
+
+def test_native_decision_lora_uses_complete_cluster_copy_after_partial_local_cache(loaded_laya, tmp_path, monkeypatch):
+    original, paths = loaded_laya
+    checkpoint = original._model_name_or_path
+    original.unload()
+    local, cluster = tmp_path / "local-cache", tmp_path / "cluster-cache"
+    revision = "a" * 40
+    for root, files in (
+        (local, ["adapter_config.json"]),
+        (cluster, ["adapter_config.json", "adapter_model.safetensors"]),
+    ):
+        repository = root / "models--org--decision-lora"
+        directory = repository / "snapshots" / revision
+        directory.mkdir(parents=True)
+        (repository / "refs").mkdir()
+        (repository / "refs" / "main").write_text(revision)
+        for filename in files:
+            shutil.copyfile(Path(paths["a"]) / filename, directory / filename)
+    monkeypatch.setenv("SIE_LOCAL_CACHE", str(local))
+    monkeypatch.setenv("SIE_CLUSTER_CACHE", str(cluster))
+    monkeypatch.setenv("SIE_HF_FALLBACK", "false")
+    denied = Mock(side_effect=AssertionError("offline adapter attempted network access"))
+    monkeypatch.setattr(socket.socket, "connect", denied)
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", denied)
+    monkeypatch.setattr(huggingface_hub, "file_exists", denied)
+    adapter = LayaLoraAdapter(
+        checkpoint,
+        lora_paths={"a": "org/decision-lora"},
+        lora_revisions={"org/decision-lora": revision},
+    )
+    adapter.load("cpu")
+    try:
+        baseline = result(adapter, None)
+        assert adapter.load_lora("a") > 0
+        adapted = result(adapter, "a")
+        assert adapted != baseline
+        assert result(adapter, None) == baseline
+        adapter.unload_lora("a")
+        adapter.load_lora("a")
+        assert result(adapter, "a") == adapted
+        assert result(adapter, None) == baseline
+        denied.assert_not_called()
+    finally:
+        adapter.unload()
 
 
 @pytest.fixture(params=[("span", "bert"), ("span", "deberta"), ("boundary", "modernbert")])

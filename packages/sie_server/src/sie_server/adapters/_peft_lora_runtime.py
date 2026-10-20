@@ -21,13 +21,13 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from huggingface_hub import snapshot_download
 from peft import LoraConfig, PeftConfig, PeftModel
 from peft.functional import delete_adapter
 from peft.tuners.lora import LoraModel
 from peft.tuners.lora.layer import Linear as LoraLinear
 from safetensors.torch import load_file
 
+from sie_server.adapters._lora_source import resolve_lora_source
 from sie_server.adapters.lora import LoraRuntimeConfig, LoraStateUncertainError, LoraUnavailableError
 from sie_server.adapters.peft_lora_mixin import PEFTLoRAMixin
 
@@ -172,12 +172,7 @@ class DetachedLoraRuntime(ABC):
 
     def _source_directory(self, canonical: str, revision: str | None) -> Path:
         """Resolve an already-authorized declaration before taking an owned snapshot."""
-        directory = Path(canonical)
-        if directory.is_dir():
-            if revision is not None:
-                raise ValueError("A local LoRA directory cannot honor a Hub revision pin")
-            return directory
-        return Path(snapshot_download(canonical, revision=revision, allow_patterns=list(_FILES)))
+        return resolve_lora_source(canonical, revision)
 
     def _ready(self) -> None:
         if self._uncertain:
