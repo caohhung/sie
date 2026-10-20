@@ -22,7 +22,16 @@ max_sequence_length: 4096
 profiles:
   default:
     max_batch_tokens: 8192
-    kv_budget_tokens: 8192
+    # The KV budget is the SGLang pool size (--max-total-tokens), and the pool
+    # bounds requests in flight: SGLang admits a request only while the pool
+    # can hold its prompt plus max_tokens, and keeps 0.7 (decaying to 0.098)
+    # of each running request's unused max_tokens reserved. A translation
+    # request (about 80 prompt and 110 output tokens, max_tokens at the 1024
+    # cap) holds about 300 tokens under steady load, so 8192 kept about 25 in
+    # flight and 65536 keeps about 200. One L4 still gains throughput from 64
+    # to 128 in flight. Reservation in bf16: 4.0 GiB weights + 4.0 GiB KV
+    # (64 KiB per token) + 3 GiB headroom, about 11 GiB of the L4's 22.5 GiB.
+    kv_budget_tokens: 65536
     compute_precision: bfloat16
     adapter_path: sie_server.adapters.sglang.generation:SGLangGenerationAdapter
     adapter_options:
