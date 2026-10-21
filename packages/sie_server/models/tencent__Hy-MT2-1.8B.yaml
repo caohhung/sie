@@ -28,14 +28,16 @@ profiles:
     # (decaying to 0.098) of each running request's unused max_tokens
     # reserved. A translation request (about 80 prompt and 110 output tokens,
     # max_tokens at the 1024 cap) holds about 300 tokens under steady load, so
-    # SGLang ran about 25 at 8192 and runs about 200 at 65536. One L4 still
+    # SGLang ran about 25 at 8192 and runs about 105 at 32768. One L4 still
     # gains throughput from 64 to 128 in flight. This budget sets only the
     # engine's limit: in queue mode the worker sidecar also caps each pull
     # loop at SIE_PULL_LOOP_MAX_OUTSTANDING messages (default: the fetch
-    # budget, 64), so a queue worker needs that at 128 or more to reach 128.
-    # Reservation in bf16: 4.0 GiB weights + 4.0 GiB KV (64 KiB per token)
-    # + 3 GiB headroom, about 11 GiB of the L4's 22.5 GiB.
-    kv_budget_tokens: 65536
+    # budget, 64), so a queue worker stays at 64 per pull loop until that
+    # cap is raised.
+    # Reservation in bf16: 4.0 GiB weights + 2.0 GiB KV (64 KiB per token)
+    # + 3 GiB headroom, about 9 GiB, so a 10 GB GPU still fits it; 65536
+    # would need about 11 GiB.
+    kv_budget_tokens: 32768
     compute_precision: bfloat16
     adapter_path: sie_server.adapters.sglang.generation:SGLangGenerationAdapter
     adapter_options:
