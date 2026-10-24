@@ -1312,6 +1312,8 @@ class ModelWorker:
             except Exception as exc:  # noqa: BLE001
                 self._fail_unselectable_batch(synthetic_batch, lora, exc)
                 return futures
+            if lora is not None and self._registry_callbacks is not None and self._model_name is not None:
+                self._registry_callbacks.touch_lora_lru(self._model_name, lora, self._adapter)
             await self._process_batch(synthetic_batch)
 
         return futures
@@ -1484,6 +1486,12 @@ class ModelWorker:
                         self._fail_unselectable_batch(batch, active_lora, exc)
                         was_idle = True
                         continue
+                    if (
+                        active_lora is not None
+                        and self._registry_callbacks is not None
+                        and self._model_name is not None
+                    ):
+                        self._registry_callbacks.touch_lora_lru(self._model_name, active_lora, self._adapter)
 
                     # Process the batch and track inference time.
                     await self._process_batch(batch, engine_queue_owned=True)

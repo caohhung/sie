@@ -1142,9 +1142,9 @@ def test_real_score_routes_authorize_aliases_isolate_batches_and_evict(
             for selection, future in futures:
                 actual = future.result(timeout=20)
                 np.testing.assert_allclose(actual, expected[selection], atol=1e-6, rtol=0)
-        ready("b")  # A is now the least recently used resident.
+        ready("a")  # B is now least recently used, despite A loading first.
         ready("c")
-        assert set(app.state.registry.loaded_lora_names(model)) == {"b", "c"}
-        assert not app.state.registry.is_lora_loaded(model, "a")
+        assert set(app.state.registry.loaded_lora_names(model)) == {"a", "c"}
+        assert not app.state.registry.is_lora_loaded(model, "b")
         np.testing.assert_allclose(ready()[0], baseline, atol=1e-6, rtol=0)
         assert fetched == [paths["a"], paths["b"], paths["c"]]
