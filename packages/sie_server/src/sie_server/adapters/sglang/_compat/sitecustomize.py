@@ -23,8 +23,9 @@ When the adapter sets ``SIE_SGLANG_JSON_NUMBER_MAX_DIGITS``, the hook also
 bounds the digit runs of numbers in XGrammar's JSON-schema grammars (see the
 section at the end of this module).
 
-``SIE_SGLANG_LORA_COMPAT`` enables the exact-version LoRA GPU slot release
-backport needed for runtime eviction on the pinned SGLang 0.5.10 engine.
+``SIE_SGLANG_LORA_COMPAT`` enables exact-version partial QKV LoRA normalization
+on both pinned engines and the GPU slot release backport needed for runtime
+eviction on SGLang 0.5.10.
 
 ``SIE_SGLANG_CHAT_TOOLS_AS_SENT`` makes the chat route render a request's
 tools as sent (see ``sie_chat_tools``).
