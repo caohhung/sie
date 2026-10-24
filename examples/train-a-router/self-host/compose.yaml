@@ -1,0 +1,47 @@
+name: train-a-router-encoder
+
+services:
+  encoder:
+    image: ghcr.io/superlinked/sie-server:v0.10.1-cuda12-default@sha256:eff8cb767a7c7c7318c0feca7f677738f27e654fd774eaebab72feb4f61f84b4
+    platform: linux/amd64
+    restart: "no"
+    shm_size: 8gb
+    environment:
+      SIE_AUTH_MODE: none
+      HF_HOME: /app/.cache/huggingface
+    volumes:
+      - ./models:/app/models:ro
+      - ./check_encoder.py:/opt/check_encoder.py:ro
+      - encoder-cache:/app/.cache
+    ports:
+      - "127.0.0.1:8000:8080"
+    command:
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --models-dir
+      - /app/models
+      - --models
+      - Qwen/Qwen3-Embedding-4B
+      - --preload
+      - Qwen/Qwen3-Embedding-4B
+      - --device
+      - cuda
+    healthcheck:
+      test: [CMD, python, /opt/check_encoder.py]
+      interval: 10s
+      timeout: 10s
+      start_period: 10m
+      retries: 3
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["${ENCODER_GPU:-0}"]
+              capabilities: [gpu]
+
+volumes:
+  encoder-cache:

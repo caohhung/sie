@@ -1,4 +1,9 @@
-# Send each request to a cheap or a strong LLM
+# Historical cost-routing study
+
+This is a separately installable study of cheap/strong LLM routing, with its own
+locked environment and archived answer costs. It is independent of the parent
+handler example and the new [Train a router](../../train-a-router/README.md)
+learning example. The figures below describe the dated recorded study.
 
 ## What this shows
 

@@ -572,6 +572,32 @@ autoscaling:
   cooldownPeriod: 600  # 10 min before scale-down
 ```
 
+### Worker init containers and volumes
+
+`workers.common.extraInitContainers` adds init containers to every worker pod,
+run before the worker starts. `workers.common.extraVolumes` adds volumes for
+them. Both are standard Kubernetes lists and are not rendered on remote lanes.
+Init containers can also mount the worker's `shm` and `model-cache` volumes, plus
+`sie-ipc` and `kernel-cache` when those features are on. Extra volume names
+must not reuse a chart worker volume name (`shm`, `model-cache`, `sie-ipc`,
+`upstreams`, `equivalence`, `kernel-cache`); the render fails if they do.
+
+```yaml
+workers:
+  common:
+    extraInitContainers:
+      - name: wait-for-dependency
+        image: busybox:1.37.0
+        command: ["sh", "-c", "until wget -q -O /dev/null http://my-dependency/readyz; do sleep 2; done"]
+        volumeMounts:
+          - name: extra-config
+            mountPath: /etc/extra
+    extraVolumes:
+      - name: extra-config
+        configMap:
+          name: my-extra-config
+```
+
 ### Multi-GPU Worker Shapes
 
 Req6 separates the Kubernetes allocation shape from the worker execution shape.
