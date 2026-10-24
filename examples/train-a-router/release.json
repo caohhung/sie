@@ -1,0 +1,7 @@
+{
+  "format": "train-a-router-release-v1",
+  "manifest_url": "https://huggingface.co/datasets/superlinked/train-a-router-bbeh/resolve/86dd7494a4c2396bc9ffa890f994b9722610b357/manifest.json",
+  "manifest_sha256": "4fd8a49d760384ad745c1bd49b3ee61cb58fd8d98c71cef6552ff6dbfda66b55",
+  "dataset": "superlinked/train-a-router-bbeh",
+  "revision": "86dd7494a4c2396bc9ffa890f994b9722610b357"
+}

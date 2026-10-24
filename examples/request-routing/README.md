@@ -1,4 +1,7 @@
-# Route requests without a generation call on every message
+# Route requests to handlers
+
+This example chooses a handler for a request. To train a new decision function
+from reviewed examples, use [Train a router](../train-a-router/README.md).
 
 For a single native classification call with your own handler labels, see
 the [direct routing example](./direct). The recorded cascade below uses a
