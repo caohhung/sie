@@ -434,7 +434,8 @@ def test_selection_denied_before_fetch_or_forward(loaded_laya, monkeypatch, sele
 
 
 @pytest.mark.asyncio
-async def test_native_decision_worker_lazy_loading_and_lru(loaded_laya, monkeypatch):
+@pytest.mark.parametrize("preformed", [False, True])
+async def test_native_decision_worker_lazy_loading_and_lru(loaded_laya, monkeypatch, preformed):
     adapter, paths = loaded_laya
     fetch = Mock(wraps=adapter.fetch_lora)
     monkeypatch.setattr(adapter, "fetch_lora", fetch)
@@ -473,23 +474,31 @@ async def test_native_decision_worker_lazy_loading_and_lru(loaded_laya, monkeypa
         expected = {name: result(adapter, name) for name in (None, "a", "b")}
 
         async def submit(name):
-            futures = await loaded.worker.submit_extract_preformed_batch(
-                [
-                    PreformedExtractRequest(
-                        build_extract_prepared_items(ITEMS), ITEMS, output_schema=QUESTIONS, options={"lora": name}
-                    )
-                ],
-                lora=name,
-            )
-            return msgspec.to_builtins((await futures[0]).output)
+            if preformed:
+                futures = await loaded.worker.submit_extract_preformed_batch(
+                    [
+                        PreformedExtractRequest(
+                            build_extract_prepared_items(ITEMS), ITEMS, output_schema=QUESTIONS, options={"lora": name}
+                        )
+                    ],
+                    lora=name,
+                )
+                future = futures[0]
+            else:
+                future = await loaded.worker.submit_extract(
+                    build_extract_prepared_items(ITEMS), ITEMS, output_schema=QUESTIONS, options={"lora": name}
+                )
+            return msgspec.to_builtins((await asyncio.wait_for(future, 5)).output)
 
         names = [None, "a", "b"]
         actual = await asyncio.gather(*(submit(name) for name in names))
         assert actual == [expected[name] for name in names]
+        assert await submit("a") == expected["a"]
         assert await registry.ensure_lora_loaded_async("decision", "c") == (False, True)
         await asyncio.wait_for(asyncio.gather(*registry._background_tasks), 5)
         assert len(loaded.loras) == len(adapter._lora._loaded) == 2
-        assert paths["c"] in adapter._lora._loaded
+        assert set(registry.loaded_lora_names("decision")) == {"a", "c"}
+        assert set(adapter._lora._loaded) == {paths["a"], paths["c"]}
         assert result(adapter, None) == expected[None]
     finally:
         await loaded.worker.stop()

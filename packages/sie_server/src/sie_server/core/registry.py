@@ -3402,6 +3402,21 @@ class ModelRegistry:
         runtime = loaded.lora_runtime
         return runtime.aliases.get(name, name) if runtime is not None else name
 
+    def touch_lora_lru(self, model: str, lora: str, adapter: ModelAdapter) -> None:
+        """Record a worker's successful selection without loading or reviving an adapter.
+
+        Called synchronously on the registry's event loop before inference
+        yields. The identity check excludes a worker from an old model load.
+        Loading and eviction state transitions run on the same loop.
+        """
+        loaded = self._loaded.get(model)
+        if loaded is None or loaded.adapter is not adapter or model in self._unloading:
+            return
+        source = self._lora_source(loaded, lora)
+        state = loaded.loras.get(source)
+        if state is not None and not state.loading and not state.unloading:
+            loaded.loras.move_to_end(source)
+
     async def ensure_lora_loaded_async(self, model: str, lora: str) -> tuple[bool, bool]:
         """Ensure a LoRA adapter is loaded, triggering load if needed.
 
