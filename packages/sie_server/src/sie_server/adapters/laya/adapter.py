@@ -74,9 +74,9 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
 import torch
-from huggingface_hub import snapshot_download
 
 from sie_server.adapters._base_adapter import BaseAdapter
+from sie_server.adapters._checkpoint import resolve_checkpoint
 from sie_server.adapters._modernbert_flash import parse_fused_rope
 from sie_server.adapters._modernbert_flash_graphs import (
     PackedForward,
@@ -249,16 +249,7 @@ class LayaAdapter(BaseAdapter):
     # ------------------------------------------------------------------ loading
 
     def _checkpoint_dir(self) -> Path:
-        path = Path(self._model_name_or_path)
-        if path.is_dir():
-            return path
-        return Path(
-            snapshot_download(
-                repo_id=self._model_name_or_path,
-                revision=self._revision,
-                allow_patterns=list(_CHECKPOINT_FILES),
-            )
-        )
+        return resolve_checkpoint(self._model_name_or_path, revision=self._revision, allow_patterns=_CHECKPOINT_FILES)
 
     @staticmethod
     def _load_tokenizer(tokenizer_dir: Path) -> PreTrainedTokenizerFast:
