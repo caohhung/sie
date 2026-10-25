@@ -329,7 +329,10 @@ def recorded_inputs(directory):
             require(
                 type(recorded["conf"]) in (int, float)
                 and math.isfinite(recorded["conf"])
-                and math.isclose(confidence, recorded["conf"], rel_tol=1e-6, abs_tol=1e-7),
+                # Float32 BLAS reductions differ across CPUs (e.g. Apple Accelerate
+                # versus OpenBLAS). Observed max absolute drift on the pinned 3,000
+                # cases is 3.8e-6. Route order and the threshold branch stay exact.
+                and math.isclose(confidence, recorded["conf"], rel_tol=1e-5, abs_tol=1e-6),
                 "recorded_front_confidence",
             )
             require((confidence >= THRESHOLD) == (recorded["conf"] >= THRESHOLD), "front_threshold")

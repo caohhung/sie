@@ -473,14 +473,14 @@ def test_split_checkpoint_drops_unused_heads() -> None:
 
 def test_checkpoint_download_is_pinned_and_filtered(tmp_path: Path) -> None:
     adapter = LayaAdapter("convaiinnovations/laya", revision="0123abc")
-    with patch("sie_server.adapters.laya.adapter.snapshot_download", return_value=str(tmp_path)) as download:
+    with patch("sie_server.adapters._checkpoint.snapshot_download", return_value=str(tmp_path)) as download:
         assert adapter._checkpoint_dir() == tmp_path
     kwargs = download.call_args.kwargs
     assert kwargs["repo_id"] == "convaiinnovations/laya"
     assert kwargs["revision"] == "0123abc"
     assert set(kwargs["allow_patterns"]) == {"rl_agent_config.json", "model.safetensors", "tokenizer/*", "encoder/*"}
     local = LayaAdapter(str(tmp_path))
-    with patch("sie_server.adapters.laya.adapter.snapshot_download") as download:
+    with patch("sie_server.adapters._checkpoint.snapshot_download") as download:
         assert local._checkpoint_dir() == tmp_path
     download.assert_not_called()
 

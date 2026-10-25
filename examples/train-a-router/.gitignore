@@ -1,0 +1,21 @@
+# Local environments and generated experiment outputs.
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.pyc
+data/
+my-router/
+published-results/
+my-results/
+answers/
+fresh-encoding/
+local-features/
+fresh-answers/
+fresh-grades/
+fresh-cpu-router/
+bbeh-source/
+calibration.html
+runs/
+reports/
+outputs/

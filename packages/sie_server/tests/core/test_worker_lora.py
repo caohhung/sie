@@ -123,6 +123,32 @@ class TestModelWorkerLoRABatching:
 
         assert raised.value.retry_after_s == 7
         callbacks.request_lora_load.assert_called_once_with("org/model", "org/evicted")
+        callbacks.touch_lora_lru.assert_not_called()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("preformed", [False, True])
+    async def test_only_selected_lora_updates_recency(self, mock_adapter: MagicMock, preformed: bool) -> None:
+        callbacks = MagicMock()
+        worker = ModelWorker(
+            mock_adapter, WorkerConfig(max_batch_wait_ms=1), model_name="org/model", registry_callbacks=callbacks
+        )
+        await worker.start()
+        try:
+            submit = worker.submit_preformed if preformed else worker.submit
+            base = await submit([make_text_item([1, 2, 3], 0)], [Item(text="base")], ["dense"])
+            await asyncio.wait_for(base, 5)
+            callbacks.touch_lora_lru.assert_not_called()
+            adapted = await submit(
+                [make_text_item([1, 2, 3], 0)], [Item(text="adapted")], ["dense"], options={"lora": "legal"}
+            )
+            await asyncio.wait_for(adapted, 5)
+            callbacks.touch_lora_lru.assert_called_once_with("org/model", "legal", mock_adapter)
+            base = await submit([make_text_item([1, 2, 3], 0)], [Item(text="base again")], ["dense"])
+            await asyncio.wait_for(base, 5)
+            callbacks.touch_lora_lru.assert_called_once_with("org/model", "legal", mock_adapter)
+            callbacks.request_lora_load.assert_not_called()
+        finally:
+            await worker.stop()
 
     @pytest.mark.asyncio
     async def test_a_preformed_batch_whose_lora_cannot_be_selected_fails_without_naming_loaded_adapters(

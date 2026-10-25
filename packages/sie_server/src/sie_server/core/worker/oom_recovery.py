@@ -22,6 +22,7 @@ from sie_server.observability.worker_telemetry import worker_telemetry
 from sie_server.types.inputs import InvalidInputError
 
 if TYPE_CHECKING:
+    from sie_server.adapters.base import ModelAdapter
     from sie_server.core.batcher import HasCost
     from sie_server.core.worker.handlers import OperationHandler
     from sie_server.core.worker.types import RequestMetadata
@@ -73,6 +74,10 @@ class RegistryCallbacks(Protocol):
         Returns the seconds the caller should wait before retrying, or
         ``None`` when no load can make ``lora`` available on ``model``.
         """
+        ...
+
+    def touch_lora_lru(self, model: str, lora: str, adapter: ModelAdapter) -> None:
+        """Mark a selected ready LoRA as used, on the registry's event loop."""
         ...
 
 

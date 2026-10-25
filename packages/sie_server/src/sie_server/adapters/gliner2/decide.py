@@ -67,9 +67,9 @@ from typing import Any, ClassVar, cast
 import numpy as np
 import torch
 import transformers
-from huggingface_hub import snapshot_download
 
 from sie_server.adapters._base_adapter import BaseAdapter
+from sie_server.adapters._checkpoint import resolve_checkpoint
 from sie_server.adapters._spec import AdapterSpec
 from sie_server.adapters._transformers_compat import install_transformers_security_fixes
 from sie_server.adapters._types import ERR_NOT_LOADED, ComputePrecision
@@ -454,16 +454,7 @@ class GLiNER2DecideAdapter(BaseAdapter):
     # ------------------------------------------------------------------ loading
 
     def _checkpoint_dir(self) -> Path:
-        path = Path(self._model_name_or_path)
-        if path.is_dir():
-            return path
-        return Path(
-            snapshot_download(
-                repo_id=self._model_name_or_path,
-                revision=self._revision,
-                allow_patterns=list(_CHECKPOINT_FILES),
-            )
-        )
+        return resolve_checkpoint(self._model_name_or_path, revision=self._revision, allow_patterns=_CHECKPOINT_FILES)
 
     def load(self, device: str) -> None:
         """Load the checkpoint with ``gliner2.AutoExtractor`` onto ``device``."""

@@ -19,6 +19,8 @@ L4_TOTAL_BYTES = 23034 * 1024**2
         "Qwen__Qwen3Guard-Gen-0.6B",
         "ibm-granite__granite-guardian-3.0-2b",
         "Qwen__Qwen3-Embedding-4B",
+        "Qwen__Qwen3-Embedding-0.6B",
+        "Qwen__Qwen3-Embedding-8B",
         "lightonai__LightOnOCR-2-1B",
         "tencent__Hy-MT2-1.8B",
     ],

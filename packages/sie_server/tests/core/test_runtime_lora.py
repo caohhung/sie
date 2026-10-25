@@ -41,6 +41,36 @@ async def finish_loads(registry):
     await asyncio.wait_for(asyncio.gather(*registry._background_tasks), 2)
 
 
+@pytest.mark.parametrize("selection", ["a", "org/a"])
+def test_selected_lora_touches_canonical_resident_without_loading(monkeypatch, selection):
+    registry, loaded, adapter = registry_with_loras(monkeypatch, capacity=2)
+    loaded.loras["org/a"] = LoadedLora("org/a")
+    loaded.loras["org/b"] = LoadedLora("org/b")
+    registry.touch_lora_lru("base", selection, adapter)
+    assert list(loaded.loras) == ["org/b", "org/a"]
+    adapter.fetch_lora.assert_not_called()
+    adapter._lora._mutate.assert_not_called()
+    assert not registry._background_tasks
+
+
+@pytest.mark.parametrize("state", ["missing", "loading", "unloading", "model-unloading", "old-adapter", "no-model"])
+def test_lora_touch_never_revives_unavailable_or_replaced_state(monkeypatch, state):
+    registry, loaded, adapter = registry_with_loras(monkeypatch, capacity=2)
+    if state != "missing":
+        loaded.loras["org/a"] = LoadedLora("org/a", loading=state == "loading", unloading=state == "unloading")
+    loaded.loras["org/b"] = LoadedLora("org/b")
+    if state == "model-unloading":
+        registry._unloading.add("base")
+    if state == "no-model":
+        del registry._loaded["base"]
+    before = list(loaded.loras.items())
+    registry.touch_lora_lru("base", "a", Mock() if state == "old-adapter" else adapter)
+    assert list(loaded.loras.items()) == before
+    adapter.fetch_lora.assert_not_called()
+    adapter._lora._mutate.assert_not_called()
+    assert not registry._background_tasks
+
+
 @pytest.mark.asyncio
 async def test_first_request_returns_loading_then_alias_and_source_are_ready(monkeypatch):
     registry, _, adapter = registry_with_loras(monkeypatch)

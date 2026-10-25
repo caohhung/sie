@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 import torch
-from huggingface_hub import snapshot_download
 
 from sie_server.adapters._base_adapter import BaseAdapter
+from sie_server.adapters._checkpoint import resolve_checkpoint
 from sie_server.adapters._spec import AdapterSpec
 from sie_server.adapters._transformers_compat import install_transformers_security_fixes
 from sie_server.adapters._types import ERR_NOT_LOADED, ComputePrecision
@@ -110,15 +110,9 @@ class PerplexityDecisionAdapter(BaseAdapter):
         """Load the locally resolved checkpoint with Transformers 5's native architecture."""
         from transformers import AutoProcessor
 
-        directory = Path(self._model_name_or_path)
-        if not directory.is_dir():
-            directory = Path(
-                snapshot_download(
-                    repo_id=self._model_name_or_path,
-                    revision=self._revision,
-                    allow_patterns=list(_CHECKPOINT_FILES),
-                )
-            )
+        directory = resolve_checkpoint(
+            self._model_name_or_path, revision=self._revision, allow_patterns=_CHECKPOINT_FILES
+        )
         config = checkpoint_config(directory)
         install_transformers_security_fixes()
         processor = AutoProcessor.from_pretrained(str(directory), local_files_only=True, trust_remote_code=False)
