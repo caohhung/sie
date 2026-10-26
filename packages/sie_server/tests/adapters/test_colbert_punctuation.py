@@ -25,7 +25,7 @@ def test_punctuation_skiplist_uses_exact_ids_without_encoded_boundary_tokens() -
     assert 6 not in token_ids  # XLM-R's incidental standalone word-boundary token.
 
 
-def test_punctuation_skiplist_excludes_unknown_and_invalid_ids() -> None:
+def test_punctuation_skiplist_keeps_the_unknown_id_and_excludes_invalid_ids() -> None:
     tokenizer = _TokenizerStub(
         {
             "!": _TokenizerStub.unk_token_id,
@@ -37,4 +37,4 @@ def test_punctuation_skiplist_excludes_unknown_and_invalid_ids() -> None:
 
     token_ids = punctuation_token_ids(tokenizer)
 
-    assert token_ids == {5}
+    assert token_ids == {_TokenizerStub.unk_token_id, 5}
