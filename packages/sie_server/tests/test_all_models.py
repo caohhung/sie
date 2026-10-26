@@ -695,6 +695,14 @@ def test_mixedbread_ai_mxbai_edge_colbert_v0_32m_multivector() -> None:
     )
 
 
+def test_vagosolutions_sauerkrautlm_moederncolbert_115m_multivector() -> None:
+    _assert_multivector(
+        "VAGOsolutions/SauerkrautLM-MoEdernColBERT-115M",
+        128,
+        [-0.12548828125, -0.07757568359375, -0.0006327629089355469],
+    )
+
+
 # =============================================================================
 # Multivector models with image support
 # =============================================================================
