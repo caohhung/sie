@@ -1,0 +1,46 @@
+sie_id: "VAGOsolutions/SauerkrautLM-MoEdernColBERT-115M"
+hf_id: "VAGOsolutions/SauerkrautLM-MoEdernColBERT-115M"
+hf_revision: 66380d2ade3b5027bba83bdcdba052d0bb86dcdb
+inputs:
+  text: true
+  image: false
+  audio: false
+  video: false
+tasks:
+  encode:
+    dense: null
+    sparse: null
+    multivector:
+      dim: 128
+  score: {}
+  extract: null
+max_sequence_length: 512
+profiles:
+  default:
+    max_batch_tokens: 16384
+    # The checkpoint's custom encoder overflows to NaN in float16, and its
+    # remote modeling declares no flash_attention_2 support, which native
+    # mode requests for bfloat16 on CUDA. float32 resolves to SDPA and is the
+    # pinned config dtype.
+    compute_precision: float32
+    adapter_path: sie_server.adapters.colbert:ColBERTAdapter
+    adapter_options:
+      loadtime:
+        # 1_Dense/config.json: {"in_features": 1024, "out_features": 128}.
+        token_dim: 128
+        # config_sentence_transformers.json: document_length 512 and
+        # query_length 32, each including the inserted marker token.
+        max_seq_length: 512
+        query_max_length: 32
+        query_prefix: '[Q] '
+        doc_prefix: '[D] '
+        query_expansion: true
+        # PyLate keeps special tokens and drops only padding from documents.
+        skip_special_tokens: false
+        # skiplist_words is string.punctuation.
+        doc_punctuation_skiplist: true
+        normalize: true
+        # model_type modernbert_hash_moe_hybrid has no BERT encoder.layer
+        # stack for the manual flash loop.
+        use_native_attention: true
+      runtime: {}
